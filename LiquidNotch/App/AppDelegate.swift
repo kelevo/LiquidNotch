@@ -5,13 +5,13 @@ class NotchHoverHandler: NSResponder {
     var onHoverEnter: (() -> Void)?
     var onHoverExit: (() -> Void)?
     private var hoverTimer: Timer?
-    
+
     override func mouseEntered(with event: NSEvent) {
         hoverTimer?.invalidate()
         hoverTimer = nil
         onHoverEnter?()
     }
-    
+
     override func mouseExited(with event: NSEvent) {
         hoverTimer?.invalidate()
         hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
@@ -22,32 +22,48 @@ class NotchHoverHandler: NSResponder {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: NSPanel?
-    private var panelWidth: CGFloat = 170
-    private var panelHeight: CGFloat = 24
     private var trackingArea: NSTrackingArea?
     private var hoverHandler: NotchHoverHandler?
     let notchState = NotchState()
+    private let mediaManager = MediaRemoteManager()
+
+    private let capsuleWidth: CGFloat = 170
+    private let capsuleHeight: CGFloat = 24
+    private let expandedWidth: CGFloat = 370
+    private let expandedHeight: CGFloat = 180
+    private let screenOffset: CGFloat = 4
+
+    private var topEdgeY: CGFloat = 0
+    private var centerX: CGFloat = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("🚀 === applicationDidFinishLaunching START ===")
         NSApp.setActivationPolicy(.accessory)
         createPanel()
-        
+
         DispatchQueue.main.async {
-            self.positionAtNotch()
+            self.positionPanel()
             self.setupTrackingArea()
         }
-        
-        print("🚀 === applicationDidFinishLaunching END ===")
     }
-    
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
 
+    // MARK: - Panel Creation
+
     private func createPanel() {
+        guard let screen = NSScreen.main else { return }
+        let screenFrame = screen.frame
+
+        centerX = screenFrame.midX
+        topEdgeY = screenFrame.maxY - screenOffset
+
+        let panelX = centerX - (capsuleWidth / 2)
+        let panelY = topEdgeY - capsuleHeight
+
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            contentRect: NSRect(x: panelX, y: panelY, width: capsuleWidth, height: capsuleHeight),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -63,88 +79,120 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
 
-        let mainView = MainNotchView(state: notchState)
+        let mainView = UnifiedNotchView(mediaManager: mediaManager, notchState: notchState)
         let hostingView = NSHostingView(rootView: mainView)
-        hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        hostingView.frame = NSRect(x: 0, y: 0, width: capsuleWidth, height: capsuleHeight)
         hostingView.autoresizingMask = [.width, .height]
         panel.contentView = hostingView
 
         panel.orderFrontRegardless()
     }
-    
+
+    // MARK: - Positioning
+
+    private func positionPanel() {
+        guard let panel = panel else { return }
+
+        let panelX = centerX - (capsuleWidth / 2)
+        let panelY = topEdgeY - capsuleHeight
+        panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
+    }
+
+    // MARK: - Tracking Area
+
     private func setupTrackingArea() {
         guard let contentView = panel?.contentView else { return }
-        
-        if let existingTrackingArea = trackingArea {
-            contentView.removeTrackingArea(existingTrackingArea)
+
+        if let existing = trackingArea {
+            contentView.removeTrackingArea(existing)
         }
-        
+
         let handler = NotchHoverHandler()
         handler.onHoverEnter = { [weak self] in
-            guard let self = self, !self.notchState.isExpanded else { return }
-            self.resizePanel(expanded: true)
+            self?.expand()
         }
         handler.onHoverExit = { [weak self] in
-            guard let self = self, self.notchState.isExpanded else { return }
-            self.resizePanel(expanded: false)
+            self?.scheduleCollapseIfNeeded()
         }
         self.hoverHandler = handler
-        
-        let trackingArea = NSTrackingArea(
+
+        let area = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: handler,
             userInfo: nil
         )
-        contentView.addTrackingArea(trackingArea)
-        self.trackingArea = trackingArea
+        contentView.addTrackingArea(area)
+        self.trackingArea = area
     }
 
-    private func positionAtNotch() {
-        guard let panel = panel,
-              let screen = NSScreen.main else { return }
+    // MARK: - Expand / Collapse
 
-        let screenFrame = screen.frame
-        let notchX = screenFrame.midX - (panelWidth / 2)
-        let notchY = screenFrame.maxY - panelHeight - 4
+    private var collapseTimer: Timer?
 
-        panel.setFrameOrigin(NSPoint(x: notchX, y: notchY))
-        print("📍 Positioned at: \(NSPoint(x: notchX, y: notchY))")
-    }
+    private func expand() {
+        guard let panel = panel, !notchState.isExpanded else { return }
 
-    func toggleExpansion() {
-        resizePanel(expanded: !notchState.isExpanded)
-    }
+        collapseTimer?.invalidate()
+        collapseTimer = nil
+        notchState.isExpanded = true
 
-    private func resizePanel(expanded: Bool) {
-        print("🔄 resizePanel called: expanded=\(expanded)")
-        guard let panel = panel,
-              let screen = NSScreen.main else { return }
-
-        let newWidth: CGFloat = expanded ? 370 : 170
-        let newHeight: CGFloat = expanded ? 160 : 24
-
-        panelWidth = newWidth
-        panelHeight = newHeight
-
-        let screenFrame = screen.frame
-        let notchX = screenFrame.midX - (newWidth / 2)
-        let notchY = screenFrame.maxY - newHeight - 4
-
-        DispatchQueue.main.async {
-            self.notchState.isExpanded = expanded
-        }
+        let expandedX = centerX - (expandedWidth / 2)
+        let expandedY = topEdgeY - expandedHeight
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.35
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-
+            context.timingFunction = CAMediaTimingFunction(
+                controlPoints: 0.4, 0.0, 0.2, 1.0
+            )
             panel.animator().setFrame(
-                NSRect(x: notchX, y: notchY, width: newWidth, height: newHeight),
+                NSRect(x: expandedX, y: expandedY, width: expandedWidth, height: expandedHeight),
                 display: true
             )
         }
-        
-        print("📦 Resized to: \(NSRect(x: notchX, y: notchY, width: newWidth, height: newHeight))")
+    }
+
+    private func scheduleCollapseIfNeeded() {
+        guard notchState.isExpanded else { return }
+
+        collapseTimer?.invalidate()
+        collapseTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            self?.collapse()
+        }
+    }
+
+    private func cancelCollapseIfNeeded() {
+        collapseTimer?.invalidate()
+        collapseTimer = nil
+    }
+
+    private func collapse() {
+        guard let panel = panel, notchState.isExpanded else { return }
+
+        collapseTimer?.invalidate()
+        collapseTimer = nil
+        notchState.isExpanded = false
+
+        let capsuleX = centerX - (capsuleWidth / 2)
+        let capsuleY = topEdgeY - capsuleHeight
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(
+                controlPoints: 0.4, 0.0, 0.2, 1.0
+            )
+            panel.animator().setFrame(
+                NSRect(x: capsuleX, y: capsuleY, width: capsuleWidth, height: capsuleHeight),
+                display: true
+            )
+        }
+    }
+
+    func toggleExpansion() {
+        if notchState.isExpanded {
+            collapse()
+        } else {
+            expand()
+        }
     }
 }

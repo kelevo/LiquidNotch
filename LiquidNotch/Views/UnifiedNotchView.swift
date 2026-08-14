@@ -1,12 +1,14 @@
 import SwiftUI
 
-struct ExpandedGlassView: View {
-    let track: TrackInfo?
-    let mediaManager: MediaRemoteManager
-    let onPlayPause: () -> Void
-    let onNext: () -> Void
-    let onPrevious: () -> Void
-    let onSeek: (TimeInterval) -> Void
+struct UnifiedNotchView: View {
+    @ObservedObject var mediaManager: MediaRemoteManager
+    @ObservedObject var notchState: NotchState
+
+    @State private var glassOpacity: Double = 0
+
+    private var track: TrackInfo? {
+        mediaManager.currentTrack
+    }
 
     private let aiColors: [Color] = [
         Color(red: 0.945, green: 0.608, blue: 0.200),
@@ -20,44 +22,87 @@ struct ExpandedGlassView: View {
     private let orbitWobble: [Double] = [0.12, 0.15, 0.10, 0.13]
 
     var body: some View {
-        HStack(spacing: 16) {
-            artworkView
-            metadataAndControlsView
+        VStack(spacing: 0) {
+            if notchState.isExpanded {
+                CapsuleBarView(mediaManager: mediaManager, notchState: notchState)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 10)
+                    .frame(height: 34)
+                    .transition(.opacity)
+
+                ExpandedContentView(
+                    track: track,
+                    mediaManager: mediaManager,
+                    onPlayPause: { mediaManager.togglePlayPause() },
+                    onNext: { mediaManager.skipNext() },
+                    onPrevious: { mediaManager.skipPrevious() },
+                    onSeek: { mediaManager.seek(to: $0) }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else {
+                CapsuleBarView(mediaManager: mediaManager, notchState: notchState)
+            }
         }
-        .padding(16)
-        .frame(width: 370, height: 160)
+        .frame(
+            width: notchState.isExpanded ? 370 : 170,
+            height: notchState.isExpanded ? 180 : 24
+        )
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 26)
-                    .fill(Color.black.opacity(0.15))
+                RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
+                    .fill(Color.black)
 
-                RoundedRectangle(cornerRadius: 26)
+                RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
+                    .fill(Color.black.opacity(0.15))
+                    .opacity(glassOpacity)
+
+                RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
                     .fill(Color.white.opacity(0.08))
+                    .opacity(glassOpacity)
 
                 animatedAIGradient
                     .blur(radius: 35)
-                    .opacity(0.40)
+                    .opacity(0.40 * glassOpacity)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 26))
+            .clipShape(RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 26)
-                .stroke(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.6), location: 0.0),
-                            .init(color: .clear, location: 0.5),
-                            .init(color: .white.opacity(0.6), location: 1.0),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+            Group {
+                if notchState.isExpanded || glassOpacity > 0 {
+                    RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.6), location: 0.0),
+                                    .init(color: .clear, location: 0.5),
+                                    .init(color: .white.opacity(0.6), location: 1.0),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                        .opacity(glassOpacity)
+                        .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                }
+            }
         )
-        .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
-        .onDisappear {
-            mediaManager.isSeeking = false
+        .onChange(of: notchState.isExpanded) { expanded in
+            if expanded {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    glassOpacity = 1.0
+                }
+            } else {
+                withAnimation(.easeOut(duration: 4.0)) {
+                    glassOpacity = 0.0
+                }
+            }
+        }
+        .onAppear {
+            glassOpacity = notchState.isExpanded ? 1.0 : 0.0
         }
     }
 
@@ -96,6 +141,25 @@ struct ExpandedGlassView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+struct ExpandedContentView: View {
+    let track: TrackInfo?
+    let mediaManager: MediaRemoteManager
+    let onPlayPause: () -> Void
+    let onNext: () -> Void
+    let onPrevious: () -> Void
+    let onSeek: (TimeInterval) -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            artworkView
+            metadataAndControlsView
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
     }
 
     private var artworkView: some View {
