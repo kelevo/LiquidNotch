@@ -6,49 +6,38 @@ struct CollapsedNotchView: View {
     var body: some View {
         HStack(spacing: 8) {
             artworkView
-            titleView
-            Spacer(minLength: 4)
+            Spacer(minLength: 8)
             MiniEqualizerView(isPlaying: track?.isPlaying ?? false)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(width: 220, height: 44)
+        .padding(.horizontal, 6)
+        .frame(width: 170, height: 24)
         .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.black.opacity(0.95))
+            Capsule()
+                .fill(Color.black)
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
         )
     }
 
     private var artworkView: some View {
         Group {
-            if let image = track?.artworkImage {
-                Image(nsImage: image)
+            if let icon = track?.appIcon {
+                Image(nsImage: icon)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: .fit)
             } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.gray.opacity(0.3))
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.white.opacity(0.15))
                     .overlay(
                         Image(systemName: "music.note")
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.7))
                     )
             }
         }
-        .frame(width: 32, height: 32)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private var titleView: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(track?.title ?? "No Track")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-
-            Text(track?.artist ?? "—")
-                .font(.system(size: 9))
-                .foregroundStyle(.white.opacity(0.6))
-                .lineLimit(1)
-        }
+        .frame(width: 18, height: 18)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }

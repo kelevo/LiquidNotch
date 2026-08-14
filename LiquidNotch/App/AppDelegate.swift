@@ -22,8 +22,8 @@ class NotchHoverHandler: NSResponder {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: NSPanel?
-    private var panelWidth: CGFloat = 220
-    private var panelHeight: CGFloat = 44
+    private var panelWidth: CGFloat = 170
+    private var panelHeight: CGFloat = 24
     private var trackingArea: NSTrackingArea?
     private var hoverHandler: NotchHoverHandler?
     let notchState = NotchState()
@@ -106,14 +106,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let screenFrame = screen.frame
         let notchX = screenFrame.midX - (panelWidth / 2)
-        let notchY: CGFloat
-        
-        if screen.safeAreaInsets.top > 0 {
-            notchY = screenFrame.maxY - panelHeight
-        } else {
-            let menuBarHeight = screenFrame.maxY - screen.visibleFrame.maxY
-            notchY = screenFrame.maxY - panelHeight - max(menuBarHeight, 0)
-        }
+        let notchY = screenFrame.maxY - panelHeight - 4
 
         panel.setFrameOrigin(NSPoint(x: notchX, y: notchY))
         print("📍 Positioned at: \(NSPoint(x: notchX, y: notchY))")
@@ -128,22 +121,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let panel = panel,
               let screen = NSScreen.main else { return }
 
-        let newWidth: CGFloat = expanded ? 360 : 220
-        let newHeight: CGFloat = expanded ? 180 : 44
+        let newWidth: CGFloat = expanded ? 370 : 170
+        let newHeight: CGFloat = expanded ? 160 : 24
 
         panelWidth = newWidth
         panelHeight = newHeight
 
         let screenFrame = screen.frame
         let notchX = screenFrame.midX - (newWidth / 2)
-        let notchY: CGFloat
-        
-        if screen.safeAreaInsets.top > 0 {
-            notchY = screenFrame.maxY - newHeight
-        } else {
-            let menuBarHeight = screenFrame.maxY - screen.visibleFrame.maxY
-            notchY = screenFrame.maxY - newHeight - max(menuBarHeight, 0)
-        }
+        let notchY = screenFrame.maxY - newHeight - 4
 
         DispatchQueue.main.async {
             self.notchState.isExpanded = expanded
