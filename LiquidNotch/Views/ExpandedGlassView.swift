@@ -34,18 +34,19 @@ struct ExpandedGlassView: View {
                     .fill(Color.white.opacity(0.08))
 
                 animatedAIGradient
-                    .blur(radius: 50)
-                    .opacity(0.60)
+                    .blur(radius: 35)
+                    .opacity(0.40)
             }
             .clipShape(RoundedRectangle(cornerRadius: 26))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 26)
-                .strokeBorder(
+                .stroke(
                     LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.45),
-                            Color.white.opacity(0.15)
+                        stops: [
+                            .init(color: .white.opacity(0.6), location: 0.0),
+                            .init(color: .clear, location: 0.5),
+                            .init(color: .white.opacity(0.6), location: 1.0),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -230,7 +231,18 @@ struct ExpandedGlassView: View {
             )
             .overlay(
                 Capsule()
-                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
+                    .stroke(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.6), location: 0.0),
+                                .init(color: .clear, location: 0.5),
+                                .init(color: .white.opacity(0.6), location: 1.0),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
             Spacer()
         }
