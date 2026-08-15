@@ -135,6 +135,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         collapseTimer?.invalidate()
         collapseTimer = nil
+
+        // Panel inicia desde la posición de la cápsula
+        let capsuleX = centerX - (capsuleWidth / 2)
+        let capsuleY = topEdgeY - capsuleHeight
+        panel.setFrame(NSRect(x: capsuleX, y: capsuleY, width: capsuleWidth, height: capsuleHeight), display: false)
+
         notchState.isExpanded = true
 
         let expandedX = centerX - (expandedWidth / 2)

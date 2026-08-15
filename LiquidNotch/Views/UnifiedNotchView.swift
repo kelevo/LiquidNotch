@@ -5,9 +5,15 @@ struct UnifiedNotchView: View {
     @ObservedObject var notchState: NotchState
 
     @State private var glassOpacity: Double = 0
+    @State private var idleGradientOpacity: Double = 0
+    @State private var idleTimer: Timer?
 
     private var track: TrackInfo? {
         mediaManager.currentTrack
+    }
+
+    private var hasAudio: Bool {
+        track != nil
     }
 
     private let aiColors: [Color] = [
@@ -20,6 +26,11 @@ struct UnifiedNotchView: View {
     private let orbitAngles: [Double] = [3 * .pi / 4, .pi / 4, 5 * .pi / 4, 7 * .pi / 4]
     private let orbitSpeeds: [Double] = [0.08, 0.09, 0.07, 0.10]
     private let orbitWobble: [Double] = [0.12, 0.15, 0.10, 0.13]
+
+    private let capsuleWidth: CGFloat = 170
+    private let capsuleHeight: CGFloat = 24
+    private let expandedWidth: CGFloat = 370
+    private let expandedHeight: CGFloat = 180
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,28 +52,46 @@ struct UnifiedNotchView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             } else {
                 CapsuleBarView(mediaManager: mediaManager, notchState: notchState)
+                    .frame(width: 170, height: 24)
             }
         }
+        .animation(.easeOut(duration: 0.2), value: notchState.isExpanded)
         .frame(
-            width: notchState.isExpanded ? 370 : 170,
-            height: notchState.isExpanded ? 180 : 24
+            width: notchState.isExpanded ? expandedWidth : capsuleWidth,
+            height: notchState.isExpanded ? expandedHeight : capsuleHeight
         )
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
-                    .fill(Color.black)
+                if notchState.isExpanded {
+                    RoundedRectangle(cornerRadius: 26)
+                        .fill(Color.black.opacity(0.15))
 
-                RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
-                    .fill(Color.black.opacity(0.15))
-                    .opacity(glassOpacity)
+                    RoundedRectangle(cornerRadius: 26)
+                        .fill(Color.white.opacity(0.08))
 
-                RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
-                    .fill(Color.white.opacity(0.08))
-                    .opacity(glassOpacity)
+                    animatedAIGradient
+                        .blur(radius: 35)
+                        .opacity(0.40)
+                        .opacity(glassOpacity)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.black)
 
-                animatedAIGradient
-                    .blur(radius: 35)
-                    .opacity(0.40 * glassOpacity)
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    aiColors[0].opacity(0.6),
+                                    aiColors[1].opacity(0.5),
+                                    aiColors[2].opacity(0.4),
+                                    aiColors[3].opacity(0.5)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .opacity(idleGradientOpacity)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12))
         )
@@ -95,14 +124,49 @@ struct UnifiedNotchView: View {
                 withAnimation(.easeOut(duration: 0.35)) {
                     glassOpacity = 1.0
                 }
+                stopIdleTimer()
             } else {
                 withAnimation(.easeOut(duration: 4.0)) {
                     glassOpacity = 0.0
                 }
+                startIdleTimer()
             }
         }
         .onAppear {
             glassOpacity = notchState.isExpanded ? 1.0 : 0.0
+            if !notchState.isExpanded {
+                startIdleTimer()
+            }
+        }
+        .onDisappear {
+            stopIdleTimer()
+        }
+    }
+
+    private func startIdleTimer() {
+        stopIdleTimer()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+            DispatchQueue.main.async {
+                triggerIdleGradient()
+            }
+        }
+    }
+
+    private func stopIdleTimer() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+    }
+
+    private func triggerIdleGradient() {
+        guard !notchState.isExpanded && !hasAudio else { return }
+
+        withAnimation(.easeIn(duration: 0.5)) {
+            idleGradientOpacity = 0.8
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeOut(duration: 4.0)) {
+                idleGradientOpacity = 0.0
+            }
         }
     }
 
