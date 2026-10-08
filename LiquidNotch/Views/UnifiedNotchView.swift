@@ -1,12 +1,20 @@
 import SwiftUI
 
-struct ExpandedGlassView: View {
-    let track: TrackInfo?
-    let mediaManager: MediaRemoteManager
-    let onPlayPause: () -> Void
-    let onNext: () -> Void
-    let onPrevious: () -> Void
-    let onSeek: (TimeInterval) -> Void
+struct UnifiedNotchView: View {
+    @ObservedObject var mediaManager: MediaRemoteManager
+    @ObservedObject var notchState: NotchState
+
+    @State private var glassOpacity: Double = 0
+    @State private var idleGradientOpacity: Double = 0
+    @State private var idleTimer: Timer?
+
+    private var track: TrackInfo? {
+        mediaManager.currentTrack
+    }
+
+    private var hasAudio: Bool {
+        track != nil
+    }
 
     private let aiColors: [Color] = [
         Color(red: 0.945, green: 0.608, blue: 0.200),
@@ -19,45 +27,146 @@ struct ExpandedGlassView: View {
     private let orbitSpeeds: [Double] = [0.08, 0.09, 0.07, 0.10]
     private let orbitWobble: [Double] = [0.12, 0.15, 0.10, 0.13]
 
+    private let capsuleWidth: CGFloat = 170
+    private let capsuleHeight: CGFloat = 24
+    private let expandedWidth: CGFloat = 370
+    private let expandedHeight: CGFloat = 180
+
     var body: some View {
-        HStack(spacing: 16) {
-            artworkView
-            metadataAndControlsView
+        VStack(spacing: 0) {
+            if notchState.isExpanded {
+                CapsuleBarView(mediaManager: mediaManager, notchState: notchState)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 10)
+                    .frame(height: 34)
+                    .transition(.opacity)
+
+                ExpandedContentView(
+                    track: track,
+                    mediaManager: mediaManager,
+                    onPlayPause: { mediaManager.togglePlayPause() },
+                    onNext: { mediaManager.skipNext() },
+                    onPrevious: { mediaManager.skipPrevious() },
+                    onSeek: { mediaManager.seek(to: $0) }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else {
+                CapsuleBarView(mediaManager: mediaManager, notchState: notchState)
+                    .frame(width: 170, height: 24)
+            }
         }
-        .padding(16)
-        .frame(width: 370, height: 160)
+        .animation(.easeOut(duration: 0.2), value: notchState.isExpanded)
+        .frame(
+            width: notchState.isExpanded ? expandedWidth : capsuleWidth,
+            height: notchState.isExpanded ? expandedHeight : capsuleHeight
+        )
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 26)
-                    .fill(Color.black.opacity(0.15))
+                if notchState.isExpanded {
+                    RoundedRectangle(cornerRadius: 26)
+                        .fill(Color.black.opacity(0.15))
 
-                RoundedRectangle(cornerRadius: 26)
-                    .fill(Color.white.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 26)
+                        .fill(Color.white.opacity(0.08))
 
-                animatedAIGradient
-                    .blur(radius: 35)
-                    .opacity(0.40)
+                    animatedAIGradient
+                        .blur(radius: 35)
+                        .opacity(0.40)
+                        .opacity(glassOpacity)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.black)
+
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    aiColors[0].opacity(0.6),
+                                    aiColors[1].opacity(0.5),
+                                    aiColors[2].opacity(0.4),
+                                    aiColors[3].opacity(0.5)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .opacity(idleGradientOpacity)
+                }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 26))
+            .clipShape(RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 26)
-                .stroke(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.6), location: 0.0),
-                            .init(color: .clear, location: 0.5),
-                            .init(color: .white.opacity(0.6), location: 1.0),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+            Group {
+                if notchState.isExpanded || glassOpacity > 0 {
+                    RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.6), location: 0.0),
+                                    .init(color: .clear, location: 0.5),
+                                    .init(color: .white.opacity(0.6), location: 1.0),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                        .opacity(glassOpacity)
+                        .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                }
+            }
         )
-        .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
+        .onChange(of: notchState.isExpanded) { expanded in
+            if expanded {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    glassOpacity = 1.0
+                }
+                stopIdleTimer()
+            } else {
+                withAnimation(.easeOut(duration: 4.0)) {
+                    glassOpacity = 0.0
+                }
+                startIdleTimer()
+            }
+        }
+        .onAppear {
+            glassOpacity = notchState.isExpanded ? 1.0 : 0.0
+            if !notchState.isExpanded {
+                startIdleTimer()
+            }
+        }
         .onDisappear {
-            mediaManager.isSeeking = false
+            stopIdleTimer()
+        }
+    }
+
+    private func startIdleTimer() {
+        stopIdleTimer()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+            DispatchQueue.main.async {
+                triggerIdleGradient()
+            }
+        }
+    }
+
+    private func stopIdleTimer() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+    }
+
+    private func triggerIdleGradient() {
+        guard !notchState.isExpanded && !hasAudio else { return }
+
+        withAnimation(.easeIn(duration: 0.5)) {
+            idleGradientOpacity = 0.8
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeOut(duration: 4.0)) {
+                idleGradientOpacity = 0.0
+            }
         }
     }
 
@@ -96,6 +205,25 @@ struct ExpandedGlassView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+struct ExpandedContentView: View {
+    let track: TrackInfo?
+    let mediaManager: MediaRemoteManager
+    let onPlayPause: () -> Void
+    let onNext: () -> Void
+    let onPrevious: () -> Void
+    let onSeek: (TimeInterval) -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            artworkView
+            metadataAndControlsView
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
     }
 
     private var artworkView: some View {

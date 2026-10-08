@@ -9,12 +9,17 @@ struct MainNotchView: View {
             if state.isExpanded {
                 ExpandedGlassView(
                     track: mediaManager.currentTrack,
+                    mediaManager: mediaManager,
                     onPlayPause: { mediaManager.togglePlayPause() },
                     onNext: { mediaManager.skipNext() },
                     onPrevious: { mediaManager.skipPrevious() },
                     onSeek: { mediaManager.seek(to: $0) }
                 )
-                .transition(.opacity)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.8, anchor: .top)
+                        .combined(with: .opacity),
+                    removal: .opacity
+                ))
             } else {
                 CollapsedNotchView(track: mediaManager.currentTrack)
                     .transition(.opacity)

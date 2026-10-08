@@ -4,8 +4,11 @@ import Combine
 
 class MediaRemoteManager: ObservableObject {
     @Published var currentTrack: TrackInfo?
+    var isSeeking = false
 
     private var timer: Timer?
+    private var elapsedTimer: Timer?
+    private var seekDebounceTimer: Timer?
     private let workQueue = DispatchQueue(label: "com.liquidnotch.mediaremote", qos: .utility)
     private var isFetching = false
     private var artworkCache: [String: NSImage] = [:]
@@ -61,6 +64,44 @@ class MediaRemoteManager: ObservableObject {
         }
     }
 
+    private func isAppPlaying(bundleId: String) -> Bool {
+        let appName = bundleId == Self.appleMusicBundleId ? "Music" : "Spotify"
+        let script = """
+        tell application "\(appName)"
+            return player state is playing
+        end tell
+        """
+        var error: NSDictionary?
+        guard let appleScript = NSAppleScript(source: script) else {
+            return false
+        }
+        let result = appleScript.executeAndReturnError(&error)
+        if let error = error {
+            print("❌ Error checking play state for \(appName): \(error)")
+            return false
+        }
+        return result.stringValue == "true"
+    }
+
+    private func getActiveSource() -> MediaSource? {
+        let musicRunning = isAppRunning(bundleId: Self.appleMusicBundleId)
+        let spotifyRunning = isAppRunning(bundleId: Self.spotifyBundleId)
+
+        if musicRunning && isAppPlaying(bundleId: Self.appleMusicBundleId) {
+            return .appleMusic
+        } else if spotifyRunning && isAppPlaying(bundleId: Self.spotifyBundleId) {
+            return .spotify
+        }
+
+        if musicRunning, let _ = fetchFromAppleMusic() {
+            return .appleMusic
+        } else if spotifyRunning, let _ = fetchFromSpotify() {
+            return .spotify
+        }
+
+        return nil
+    }
+
     private func getAppIcon(bundleId: String) -> NSImage? {
         if let cached = iconCache[bundleId] {
             return cached
@@ -74,7 +115,7 @@ class MediaRemoteManager: ObservableObject {
     }
 
     private func fetchNowPlaying() {
-        guard !isFetching else { return }
+        guard !isFetching, !isSeeking else { return }
         isFetching = true
         defer { isFetching = false }
 
@@ -83,7 +124,14 @@ class MediaRemoteManager: ObservableObject {
         let musicRunning = isAppRunning(bundleId: Self.appleMusicBundleId)
         let spotifyRunning = isAppRunning(bundleId: Self.spotifyBundleId)
 
-        if musicRunning, let track = fetchFromAppleMusic() {
+        let musicPlaying = musicRunning && isAppPlaying(bundleId: Self.appleMusicBundleId)
+        let spotifyPlaying = spotifyRunning && isAppPlaying(bundleId: Self.spotifyBundleId)
+
+        if musicPlaying, let track = fetchFromAppleMusic() {
+            newTrack = track
+        } else if spotifyPlaying, let track = fetchFromSpotify() {
+            newTrack = track
+        } else if musicRunning, let track = fetchFromAppleMusic() {
             newTrack = track
         } else if spotifyRunning, let track = fetchFromSpotify() {
             newTrack = track
@@ -96,7 +144,35 @@ class MediaRemoteManager: ObservableObject {
             if self.currentTrack != newTrack {
                 self.currentTrack = newTrack
             }
+            self.updateElapsedTimer()
         }
+    }
+
+    private func updateElapsedTimer() {
+        guard let track = currentTrack, track.isPlaying else {
+            stopElapsedTimer()
+            return
+        }
+        startElapsedTimer()
+    }
+
+    private func startElapsedTimer() {
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self = self,
+                      var track = self.currentTrack,
+                      track.isPlaying,
+                      !self.isSeeking else { return }
+                track.elapsedTime = min(track.elapsedTime + 1.0, track.duration)
+                self.currentTrack = track
+            }
+        }
+    }
+
+    private func stopElapsedTimer() {
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
     }
 
     private func fetchFromAppleMusic() -> TrackInfo? {
@@ -247,7 +323,10 @@ class MediaRemoteManager: ObservableObject {
     func togglePlayPause() {
         workQueue.async { [weak self] in
             guard let self = self else { return }
-            if self.isAppRunning(bundleId: Self.appleMusicBundleId) {
+            let source = self.getActiveSource()
+
+            switch source {
+            case .appleMusic:
                 let script = """
                 tell application "Music"
                     if player state is playing then
@@ -257,14 +336,24 @@ class MediaRemoteManager: ObservableObject {
                     end if
                 end tell
                 """
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-            } else if self.isAppRunning(bundleId: Self.spotifyBundleId) {
+                var error: NSDictionary?
+                _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error = error {
+                    print("❌ Apple Music togglePlayPause error: \(error)")
+                }
+            case .spotify:
                 let script = """
                 tell application "Spotify"
                     playpause
                 end tell
                 """
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
+                var error: NSDictionary?
+                _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error = error {
+                    print("❌ Spotify togglePlayPause error: \(error)")
+                }
+            case .other, .none:
+                break
             }
             self.fetchNowPlaying()
         }
@@ -273,12 +362,25 @@ class MediaRemoteManager: ObservableObject {
     func skipNext() {
         workQueue.async { [weak self] in
             guard let self = self else { return }
-            if self.isAppRunning(bundleId: Self.appleMusicBundleId) {
+            let source = self.getActiveSource()
+
+            switch source {
+            case .appleMusic:
                 let script = "tell application \"Music\" to next track"
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-            } else if self.isAppRunning(bundleId: Self.spotifyBundleId) {
+                var error: NSDictionary?
+                _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error = error {
+                    print("❌ Apple Music skipNext error: \(error)")
+                }
+            case .spotify:
                 let script = "tell application \"Spotify\" to next track"
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
+                var error: NSDictionary?
+                _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error = error {
+                    print("❌ Spotify skipNext error: \(error)")
+                }
+            case .other, .none:
+                break
             }
             self.fetchNowPlaying()
         }
@@ -287,33 +389,72 @@ class MediaRemoteManager: ObservableObject {
     func skipPrevious() {
         workQueue.async { [weak self] in
             guard let self = self else { return }
-            if self.isAppRunning(bundleId: Self.appleMusicBundleId) {
+            let source = self.getActiveSource()
+
+            switch source {
+            case .appleMusic:
                 let script = "tell application \"Music\" to previous track"
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-            } else if self.isAppRunning(bundleId: Self.spotifyBundleId) {
+                var error: NSDictionary?
+                _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error = error {
+                    print("❌ Apple Music skipPrevious error: \(error)")
+                }
+            case .spotify:
                 let script = "tell application \"Spotify\" to previous track"
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
+                var error: NSDictionary?
+                _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error = error {
+                    print("❌ Spotify skipPrevious error: \(error)")
+                }
+            case .other, .none:
+                break
             }
             self.fetchNowPlaying()
         }
     }
 
     func seek(to time: TimeInterval) {
-        workQueue.async { [weak self] in
-            guard let self = self else { return }
-            if self.isAppRunning(bundleId: Self.appleMusicBundleId) {
-                let script = "tell application \"Music\" to set player position to \(time)"
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-            } else if self.isAppRunning(bundleId: Self.spotifyBundleId) {
-                let script = "tell application \"Spotify\" to set player position to \(time)"
-                _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
+        DispatchQueue.main.async {
+            guard var track = self.currentTrack else { return }
+            track.elapsedTime = min(max(time, 0), track.duration)
+            self.currentTrack = track
+        }
+        seekDebounceTimer?.invalidate()
+        seekDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
+            self?.workQueue.async {
+                guard let self = self else { return }
+                let source = self.getActiveSource()
+
+                switch source {
+                case .appleMusic:
+                    let script = "tell application \"Music\" to set player position to \(time)"
+                    var error: NSDictionary?
+                    _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                    if let error = error {
+                        print("❌ Apple Music seek error: \(error)")
+                    }
+                case .spotify:
+                    let script = "tell application \"Spotify\" to set player position to \(time)"
+                    var error: NSDictionary?
+                    _ = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                    if let error = error {
+                        print("❌ Spotify seek error: \(error)")
+                    }
+                case .other, .none:
+                    break
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.fetchNowPlaying()
+                }
             }
-            self.fetchNowPlaying()
         }
     }
 
     deinit {
         timer?.invalidate()
+        elapsedTimer?.invalidate()
+        seekDebounceTimer?.invalidate()
         DistributedNotificationCenter.default().removeObserver(self)
     }
 }
