@@ -3,17 +3,19 @@ import SwiftUI
 @main
 struct LiquidNotchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var settings = AppSettings()
 
     var body: some Scene {
-        MenuBarExtra("LiquidNotch", systemImage: "music.note") {
-            Button("Toggle LiquidNotch") {
-                appDelegate.toggleExpansion()
+        Window("Settings", id: "settings") {
+            SettingsRootView()
+                .environmentObject(settings)
+                .frame(minWidth: 600, minHeight: 440)
+        }
+        .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                SettingsMenuButton()
             }
-            Divider()
-            Button("Quit LiquidNotch") {
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: .command)
         }
     }
 }

@@ -1,6 +1,6 @@
 # Spec: 05 — Settings Panel y eliminación del MenuBarExtra
 
-- **Estado**: Draft
+- **Estado**: Approved
 - **Fecha**: 2026-10-08
 - **Depende de**: Spec 04 (open source prep)
 - **Autor**: opencode
@@ -8,34 +8,36 @@
 
 ## Objetivos
 
-Eliminar el `MenuBarExtra` que muestra el icono de LiquidNotch en la barra de menús del sistema y reemplazarlo por un panel de Settings accesible mediante tres puntos de entrada estándar de macOS: atajo `Cmd+,`, click derecho sobre la cápsula, y un botón de engranaje en la vista expandida.
+Eliminar el `MenuBarExtra` que muestra el icono de LiquidNotch en la barra de menús del sistema y reemplazarlo por un panel de Settings accesible mediante dos puntos de entrada: el atajo estándar `Cmd+,` y un botón de engranaje en la vista expandida de la isla. La UI de Settings es una ventana macOS estándar con `NavigationSplitView` (sidebar), estilo NotchBox, preparada para crecer con specs futuros.
 
-Una vez ejecutado este spec, LiquidNotch se comporta como una app "accessory" pura: sin icono en la barra de menús, sin icono en el Dock, pero con un panel de preferencias discoverable y consistente con las convenciones de macOS.
+La app conserva icono en el Dock (decisión aceptada por el usuario para que `Cmd+,` funcione: `LSUIElement = NO`), pero no tiene ningún icono extra en la barra de menús (sin `MenuBarExtra`).
 
 ## Alcance (Scope)
 
 ### Incluido
 
 - Eliminar el `MenuBarExtra` de `LiquidNotchApp.swift`.
-- Crear `Settings` scene de SwiftUI accesible con `Cmd+,`.
-- Crear `Views/Settings/SettingsView.swift` con tabs (General, Themes, Notifications, About) — los tabs concretos dependen de specs futuros y se documentan como placeholders.
-- Crear `Models/AppSettings.swift` (`ObservableObject`) como contenedor de preferencias inyectado vía `@EnvironmentObject` o pasado por referencia al `AppDelegate`.
+- Crear `Window("Settings", id: "settings")` scene de SwiftUI accesible con `Cmd+,` (vía `CommandGroup(replacing: .appSettings)` con `keyboardShortcut(",")`).
+- Crear `Views/Settings/SettingsView.swift` con `NavigationSplitView` + sidebar de 4 entradas (General, Theme, Notifications, About) — las entradas concretas de specs futuros se documentan como placeholders.
+- Crear `Models/AppSettings.swift` (`ObservableObject`) como contenedor de preferencias inyectado vía `@EnvironmentObject`.
+- Crear `Models/SettingsOpener.swift` con `Notification.Name.openSettings` como única vía de abrir Settings desde cualquier punto de la app (⚙ del menú App y ⚙ de la isla).
 - Persistencia con `@AppStorage` en cada vista que lo necesite, agrupados bajo namespace `liquidNotch.*`.
 - Persistir `selectedTheme` (placeholder para spec 06): `liquidNotch.theme`.
 - Persistir `expandOnHover` (default `true`): `liquidNotch.expandOnHover`.
-- Click derecho sobre la cápsula (collapsed o expanded) → `NSMenu` con ítems "Settings…" (`Cmd+,`), "Toggle LiquidNotch" y "Quit LiquidNotch" (`Cmd+Q`).
-- Botón de engranaje (`gearshape.fill`) en la esquina superior derecha del estado expandido que abre Settings.
-- `INFOPLIST_KEY_LSUIElement = YES` en Debug y Release del `.pbxproj` para asegurar accessory mode (ya está `setActivationPolicy(.accessory)` en código).
-- Verificar que `NSApp.setActivationPolicy(.accessory)` se sigue invocando en `AppDelegate.applicationDidFinishLaunching`.
+- Botón de engranaje (`gearshape.fill`) en la esquina superior derecha del estado expandido que abre Settings vía `NotificationCenter`.
+- `INFOPLIST_KEY_LSUIElement = NO` en Debug y Release del `.pbxproj` (la app muestra icono en el Dock; `setActivationPolicy(.accessory)` sigue invocándose en `AppDelegate` pero el Dock icon lo pide el usuario para que `Cmd+,` sea funcional).
+- Reducir `AppDelegate` a lifecycle del panel: eliminar `var settings`, `makeContextMenu`, `showSettings`, `toggleExpansionMenu` y `hostingView.menu`.
+- Fix del hover: `NotchHoverHandler` lee `UserDefaults.standard` directamente (sin dependencia de `AppSettings` `@MainActor`).
 
 ### Excluido
 
-- **Implementación de los tabs individuales** (Themes, Notifications, etc.) — cada uno es su propio spec (06, 09).
+- **Implementación de las entradas individuales** (Theme, Notifications, etc.) — cada uno es su propio spec (06, 09).
+- **Menú contextual de click derecho sobre la cápsula** — eliminado del alcance por decisión de UX (el ⚙ es el único entry point visible en la isla; ver Decisiones).
 - **Hotkey global configurable** (ej. `Ctrl+Cmd+N` para mostrar/ocultar) — fuera de alcance, se difiere.
 - **Sincronización vía iCloud** de Settings — fuera de alcance.
 - **Ventana de About personalizada** con créditos extendidos — solo placeholder en este spec.
 - **Settings buscables con Spotlight** — fuera de alcance.
-- **Multi-ventana de Settings** (algunos apps abren múltiples ventanas del mismo panel) — fuera de alcance.
+- **Multi-ventana de Settings** (algunas apps abren múltiples ventanas del mismo panel) — fuera de alcance.
 - **Reset to defaults** — fuera de alcance, se añade si se pide.
 - **Import / export de configuración** — fuera de alcance.
 
@@ -44,23 +46,25 @@ Una vez ejecutado este spec, LiquidNotch se comporta como una app "accessory" pu
 ```text
 LiquidNotch/
 ├── LiquidNotch/
-│   ├── LiquidNotchApp.swift              # MODIFICAR — quitar MenuBarExtra, añadir Settings scene
+│   ├── LiquidNotchApp.swift              # MODIFICAR — quitar MenuBarExtra, añadir Window scene + Commands
 │   ├── App/
-│   │   └── AppDelegate.swift             # MODIFICAR — inyectar AppSettings, NSMenu right-click
+│   │   └── AppDelegate.swift             # MODIFICAR — eliminar Settings/menú contextual, fix hover
 │   ├── Models/
 │   │   ├── AppSettings.swift             # NUEVO — ObservableObject
+│   │   ├── NotchTheme.swift              # NUEVO — enum placeholder
+│   │   ├── SettingsOpener.swift          # NUEVO — Notification.Name.openSettings
 │   │   ├── NotchState.swift              # existente
 │   │   └── TrackInfo.swift               # existente
 │   └── Views/
 │       ├── Settings/                     # NUEVO directorio
-│       │   ├── SettingsView.swift        # NUEVO — contenedor con TabView
+│       │   ├── SettingsView.swift        # NUEVO — NavigationSplitView con sidebar
 │       │   ├── GeneralSettingsView.swift # NUEVO — expand on hover, etc.
 │       │   ├── ThemeSettingsView.swift   # NUEVO placeholder para spec 06
 │       │   ├── NotificationsSettingsView.swift # NUEVO placeholder para spec 09
 │       │   └── AboutSettingsView.swift   # NUEVO — versión, build, links
-│       └── UnifiedNotchView.swift        # MODIFICAR — añadir botón ⚙
+│       └── UnifiedNotchView.swift        # MODIFICAR — botón ⚙ abre Settings vía NotificationCenter
 ├── LiquidNotch.xcodeproj/
-│   └── project.pbxproj                   # MODIFICAR — LSUIElement=YES
+│   └── project.pbxproj                   # MODIFICAR — LSUIElement=NO
 └── specs/
     └── 05-settings-panel-no-menubar.md   # este spec
 ```
@@ -88,6 +92,18 @@ final class AppSettings: ObservableObject {
 
 > **Nota**: `NotchTheme` se define formalmente en el spec 06. En este spec, se usa un tipo `enum` declarado en `Models/NotchTheme.swift` con dos casos placeholder `.liquidGlass` y `.solidBlack`, para que el spec 06 solo tenga que ampliarlo. Se documenta en **Decisiones**.
 
+### `SettingsOpener` (nuevo)
+
+```swift
+import Foundation
+
+extension Notification.Name {
+    static let openSettings = Notification.Name("kelevo.LiquidNotch.openSettings")
+}
+```
+
+> Único canal de "abrir Settings". Cualquier punto de la app (⚙ de la isla, ítem "Settings…" del menú App, futuros entry points) hace `NotificationCenter.default.post(name: .openSettings, object: nil)`. El root de la `Window` scene escucha y llama `openWindow(id: "settings")`.
+
 ### Keys de `UserDefaults`
 
 | Key | Tipo | Default | Descripción |
@@ -99,9 +115,9 @@ final class AppSettings: ObservableObject {
 
 ## Implementation Plan
 
-### Fase 1 — `AppSettings` y `NotchTheme` placeholder
+### Fase 1 — `AppSettings`, `NotchTheme` y `SettingsOpener`
 
-**Archivos nuevos**: `Models/AppSettings.swift`, `Models/NotchTheme.swift`.
+**Archivos nuevos**: `Models/AppSettings.swift`, `Models/NotchTheme.swift`, `Models/SettingsOpener.swift`.
 
 ```swift
 // Models/NotchTheme.swift
@@ -125,16 +141,16 @@ enum NotchTheme: String, CaseIterable, Identifiable {
 
 **Verificación**: el proyecto compila; `AppSettings()` se puede instanciar sin errores.
 
-### Fase 2 — Inyectar `AppSettings` en el árbol SwiftUI
+### Fase 2 — `LiquidNotchApp.swift` con `Window` scene + `Commands`
 
-**Archivo**: `LiquidNotchApp.swift` (modificar).
+**Archivo**: `LiquidNotchApp.swift` (reescribir).
 
 Cambios:
-1. Eliminar el `MenuBarExtra` por completo (líneas 8-17 del archivo actual).
-2. Añadir `Settings { SettingsView() }` como nueva scene.
-3. Crear `@StateObject private var settings = AppSettings()` en `LiquidNotchApp`.
-4. Pasar `settings` al `AppDelegate` mediante un nuevo inicializador: `appDelegate.settings = settings` en el `init` del `App` o vía `@EnvironmentObject` en la `SettingsView`.
-5. El `AppDelegate` recibe `settings: AppSettings?` y lo guarda para que `UnifiedNotchView` lo consuma.
+1. Eliminar el `MenuBarExtra` por completo.
+2. Eliminar `init() { appDelegate.settings = AppSettings() }` (ya no existe `appDelegate.settings`).
+3. Añadir `Window("Settings", id: "settings")` scene con `SettingsRootView().environmentObject(settings).frame(minWidth: 600, minHeight: 440)` y `.windowResizability(.contentSize)`.
+4. Añadir `commands { CommandGroup(replacing: .appSettings) { SettingsMenuButton() } }` donde `SettingsMenuButton` es un `View` con `@Environment(\.openWindow)` y `Button("Settings…") { openWindow(id: "settings") }.keyboardShortcut(",")`.
+5. Mantener `@NSApplicationDelegateAdaptor(AppDelegate.self)` (el `AppDelegate` sigue gestionando el panel).
 
 ```swift
 @main
@@ -143,114 +159,112 @@ struct LiquidNotchApp: App {
     @StateObject private var settings = AppSettings()
 
     var body: some Scene {
-        Settings {
-            SettingsView()
+        Window("Settings", id: "settings") {
+            SettingsRootView()
                 .environmentObject(settings)
+                .frame(minWidth: 600, minHeight: 440)
         }
-    }
-
-    init() {
-        appDelegate.settings = AppSettings()
+        .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                SettingsMenuButton()
+            }
+        }
     }
 }
 ```
 
-> **Nota**: el `AppDelegate` mantiene su propia instancia de `AppSettings` para uso desde AppKit (NSMenu). La instancia en `@StateObject` se usa para la UI SwiftUI. Se sincronizan automáticamente vía `UserDefaults`. Se documenta en **Decisiones** por qué se duplica.
+**Verificación**: `Cmd+,` abre la ventana de Settings; cerrarla y reabrirla funciona; el ítem "Settings…" aparece en el menú App.
 
-**Verificación**: `Cmd+,` abre la ventana de Settings; cerrarla y reabrirla funciona.
+### Fase 3 — `SettingsView` como `NavigationSplitView` con sidebar
 
-### Fase 3 — `SettingsView` con tabs
+**Archivo nuevo**: `Views/Settings/SettingsView.swift` (renombrado lógicamente a `SettingsRootView`, puede mantener el nombre del archivo).
 
-**Archivo nuevo**: `Views/Settings/SettingsView.swift`.
+Layout: `NavigationSplitView` con `List` sidebar y `.onReceive` para escuchar `Notification.Name.openSettings` y llamar `openWindow(id: "settings")`.
 
-Layout: `TabView` con 4 tabs:
-1. **General**: `GeneralSettingsView` (placeholder inicial con `Toggle("Expand on hover", isOn: $settings.expandOnHover)`).
-2. **Theme**: `ThemeSettingsView` (placeholder, implementado en spec 06).
-3. **Notifications**: `NotificationsSettingsView` (placeholder, implementado en spec 09).
-4. **About**: `AboutSettingsView` con versión (`Bundle.main.infoDictionary?["CFBundleShortVersionString"]`), build, GitHub link, license link.
+- `@EnvironmentObject var settings: AppSettings`
+- `@Environment(\.openWindow) private var openWindow`
+- `@State private var selection: SettingsSection = .general`
+
+Sidebar (4 entradas con systemImage):
+1. **General** (gear) → `GeneralSettingsView` (con `Toggle("Expand on hover", isOn: $settings.expandOnHover)`).
+2. **Theme** (paintbrush) → `ThemeSettingsView` (placeholder, implementado en spec 06).
+3. **Notifications** (bell) → `NotificationsSettingsView` (placeholder, implementado en spec 09).
+4. **About** (info.circle) → `AboutSettingsView` (versión, build, links).
+
+Frame: `minWidth: 600, minHeight: 440` aplicado en la `Window` scene (no en el `NavigationSplitView`, que se adapta al contenido).
 
 ```swift
-struct SettingsView: View {
+struct SettingsRootView: View {
     @EnvironmentObject var settings: AppSettings
+    @Environment(\.openWindow) private var openWindow
+    @State private var selection: SettingsSection = .general
 
     var body: some View {
-        TabView {
-            GeneralSettingsView()
-                .tabItem { Label("General", systemImage: "gear") }
-            ThemeSettingsView()
-                .tabItem { Label("Theme", systemImage: "paintbrush") }
-            NotificationsSettingsView()
-                .tabItem { Label("Notifications", systemImage: "bell") }
-            AboutSettingsView()
-                .tabItem { Label("About", systemImage: "info.circle") }
+        NavigationSplitView {
+            List(selection: $selection) {
+                Label("General", systemImage: "gear").tag(SettingsSection.general)
+                Label("Theme", systemImage: "paintbrush").tag(SettingsSection.theme)
+                Label("Notifications", systemImage: "bell").tag(SettingsSection.notifications)
+                Label("About", systemImage: "info.circle").tag(SettingsSection.about)
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+        } detail: {
+            switch selection {
+            case .general: GeneralSettingsView()
+            case .theme: ThemeSettingsView()
+            case .notifications: NotificationsSettingsView()
+            case .about: AboutSettingsView()
+            }
         }
-        .frame(width: 500, height: 320)
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            openWindow(id: "settings")
+        }
     }
 }
 ```
 
-> El tamaño del frame (500x320) es el estándar de macOS para paneles de Settings con TabView (igual que Safari, Mail, etc.).
+`SettingsMenuButton` se define en el mismo archivo:
+
+```swift
+struct SettingsMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Settings…") {
+            openWindow(id: "settings")
+        }
+        .keyboardShortcut(",", modifiers: .command)
+    }
+}
+```
 
 Cada `XxxSettingsView` placeholder contiene solo un `Text("Coming soon")` y, en el caso de `General`, el toggle mencionado.
 
-**Verificación**: la ventana se abre con `Cmd+,`; los 4 tabs se ven; el toggle de General persiste al cerrar/reabrir.
+**Verificación**: la ventana se abre con `Cmd+,`; la sidebar muestra 4 entradas; el detalle cambia al seleccionar; el toggle de General persiste al cerrar/reabrir.
 
-### Fase 4 — Click derecho en la cápsula → `NSMenu`
+### Fase 4 — Limpiar `AppDelegate` (eliminar menú contextual y `settings`)
 
 **Archivo**: `App/AppDelegate.swift` (modificar).
 
 Cambios:
-1. Añadir `var settings: AppSettings?` como propiedad del `AppDelegate`.
-2. Crear un `NSMenu` reutilizable con ítems:
-   - **"Settings…"** → `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)` con `keyEquivalent: ","`.
-   - **"Toggle LiquidNotch"** → `appDelegate.toggleExpansion()`, `keyEquivalent: " "` (espacio) o ninguno.
-   - **"Quit LiquidNotch"** → `NSApp.terminate(nil)`, `keyEquivalent: "q"`.
-3. En `setupTrackingArea()`, además del `NSTrackingArea` existente para hover, añadir un `NSTrackingArea` para `rightMouseDown` (`.activeInActiveApp`).
-4. Sobrescribir `rightMouseDown(with:)` en una subclase de `NSHostingView` (crear `NotchHostingView`) que llame a `NSMenu.popUp(positioning:at:in:)`.
+1. Eliminar `var settings: AppSettings?`.
+2. Eliminar `makeContextMenu()`, `showSettings()`, `toggleExpansionMenu()` y `hostingView.menu = makeContextMenu()` en `createPanel()`.
+3. Mantener: `applicationDidFinishLaunching` (con `setActivationPolicy(.accessory)`), `applicationShouldTerminateAfterLastWindowClosed`, `createPanel`, `positionPanel`, `setupTrackingArea`, `expand`, `collapse`, `scheduleCollapseIfNeeded`, `cancelCollapseIfNeeded`, `toggleExpansion`.
 
-> **Detalle crítico**: el tracking area existente usa `.mouseEnteredAndExited`. Para el menú contextual, una opción más limpia es usar `NSView.menu` (disponible desde macOS 14+), pero como el deployment target es 26.5, podemos usar la API moderna.
+**Verificación**: el proyecto compila; `grep -c 'hostingView.menu\|makeContextMenu' LiquidNotch/App/AppDelegate.swift` = 0.
 
-```swift
-// AppDelegate.swift
-class AppDelegate: NSObject, NSApplicationDelegate {
-    var settings: AppSettings?
-
-    private func makeContextMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
-        menu.addItem(withTitle: "Toggle LiquidNotch", action: #selector(toggleExpansionMenu), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit LiquidNotch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        return menu
-    }
-
-    @objc func showSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
-    @objc func toggleExpansionMenu() {
-        toggleExpansion()
-    }
-}
-```
-
-> **Nota técnica**: `showSettingsWindow:` es el selector que `Settings` scene de SwiftUI implementa internamente. En algunas versiones de macOS se llama `showSettingsWindow:` y en otras `showPreferences:`. Si el primero no funciona, fallback a `NSApp.sendAction(Selector(("showPreferences:")), ...)`.
-
-5. Pasar el menú al `NSHostingView` mediante `hostingView.menu = menu` en `createPanel()`.
-
-**Verificación**: click derecho sobre la cápsula muestra el menú; seleccionar "Settings…" abre la ventana; seleccionar "Quit" cierra la app.
-
-### Fase 5 — Botón ⚙ en la vista expandida
+### Fase 5 — Botón ⚙ abre Settings vía `NotificationCenter`
 
 **Archivo**: `Views/UnifiedNotchView.swift` (modificar).
 
 Cambios:
-1. Cuando `notchState.isExpanded == true`, mostrar un `Button` con `Image(systemName: "gearshape.fill")` en la esquina superior derecha del `ExpandedContentView`.
-2. La acción del botón: `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)`.
-3. Estilo: 16pt, color blanco al 60% de opacidad, sin fondo. Aumentar opacidad en hover (`@State private var settingsHovered = false`).
+1. Cuando `notchState.isExpanded == true`, mostrar un `Button` con `Image(systemName: "gearshape.fill")` en la esquina superior derecha del `ExpandedContentView` (offset `(0, -28)` respecto al `HStack` principal).
+2. La acción del botón: `NotificationCenter.default.post(name: .openSettings, object: nil)`.
+3. Estilo: 14pt, color blanco al 60% de opacidad, sin fondo. Aumentar opacidad en hover (`@State private var settingsHovered = false`).
 
 ```swift
-Button(action: { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }) {
+Button(action: { NotificationCenter.default.post(name: .openSettings, object: nil) }) {
     Image(systemName: "gearshape.fill")
         .font(.system(size: 14, weight: .medium))
         .foregroundStyle(.white.opacity(settingsHovered ? 0.95 : 0.6))
@@ -260,93 +274,88 @@ Button(action: { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, fr
 .padding(8)
 ```
 
-Posición: esquina superior derecha del `ExpandedContentView`, offset `(0, -28)` respecto al `HStack` principal para que quede en la cápsula superior (la línea de 34pt de alto que ya tiene el `CapsuleBarView`).
-
 **Verificación**: el botón aparece solo en expanded; click abre Settings; el hover cambia opacidad.
 
-### Fase 6 — `LSUIElement = YES`
+### Fase 6 — `LSUIElement = NO`
 
-**Archivo**: `LiquidNotch.xcodeproj/project.pbxproj` (modificar con Xcode).
+**Archivo**: `LiquidNotch.xcodeproj/project.pbxproj` (modificar).
 
-Pasos:
-1. Abrir el proyecto.
-2. Seleccionar el target `LiquidNotch`.
-3. Pestaña **Info** → agregar/editar `Application is agent (UIElement)` = `YES`. Esto se refleja como `INFOPLIST_KEY_LSUIElement = YES` en las dos configuraciones (Debug y Release).
-4. Verificar que el `.pbxproj` no contiene ya la línea con `NO` (debe reemplazarse, no duplicarse).
+Cambios:
+1. En ambas configuraciones (Debug y Release), `INFOPLIST_KEY_LSUIElement = YES` → `INFOPLIST_KEY_LSUIElement = NO`.
 
-**Verificación**: tras build, la app no aparece en el Dock ni en la barra de menús (solo el NSPanel del notch). El switch de App (`Cmd+Tab`) sigue funcionando.
+**Verificación**: tras build, la app aparece en el Dock. El menú App estándar está disponible (con `Cmd+,` funcional). No hay icono extra en la menubar (sin `MenuBarExtra`).
 
-### Fase 7 — `expandOnHover` consumido por `AppDelegate`
+### Fase 7 — `expandOnHover` leído directamente de `UserDefaults`
 
 **Archivo**: `App/AppDelegate.swift` (modificar).
 
 Cambios:
-1. En `NotchHoverHandler`, antes de llamar a `onHoverEnter?()`, verificar `appDelegate.settings?.expandOnHover ?? true`.
-2. Si `expandOnHover == false`, `onHoverEnter` se ignora (pero `mouseExited` se sigue manejando para evitar estados inconsistentes).
-
-```swift
-// NotchHoverHandler
-override func mouseEntered(with event: NSEvent) {
-    guard let appDelegate = NSApp.delegate as? AppDelegate,
-          appDelegate.settings?.expandOnHover ?? true else {
-        return
-    }
-    hoverTimer?.invalidate()
-    onHoverEnter?()
-}
-```
-
-> **Detalle**: el botón ⚙ en expanded es la única forma de expandir manualmente si `expandOnHover` está en `false`. Se documenta en la UI de General.
+1. En `NotchHoverHandler.mouseEntered`, reemplazar la guarda por lectura directa de `UserDefaults`:
+   ```swift
+   override func mouseEntered(with event: NSEvent) {
+       let expandOnHover = UserDefaults.standard.object(forKey: "liquidNotch.expandOnHover") as? Bool ?? true
+       guard expandOnHover else { return }
+       hoverTimer?.invalidate()
+       hoverTimer = nil
+       onHoverEnter?()
+   }
+   ```
+2. Justificación: `NotchHoverHandler` es `NSResponder` (no `@MainActor` explícito pero con aislamiento implícito del proyecto). Acceder a `AppSettings` `@MainActor` desde aquí era problemático (síntoma 3 del test: hover no expandía). `UserDefaults.standard` es thread-safe y no requiere actor.
 
 **Verificación**: con `expandOnHover = false`, hacer hover sobre la cápsula NO la expande; con `true`, sí.
 
+> **Detalle**: el botón ⚙ en expanded es la única forma de expandir manualmente si `expandOnHover` está en `false`. Se documenta en la UI de General.
+
 ## Acceptance Criteria
 
-- [ ] `LiquidNotch.xcodeproj` ya no contiene `INFOPLIST_KEY_LSUIElement = NO` (reemplazado por `= YES`).
-- [ ] Tras build, la app no aparece en el Dock ni en la barra de menús (solo el NSPanel del notch).
-- [ ] `Cmd+,` abre la ventana de Settings con 4 tabs.
+- [ ] `LiquidNotch.xcodeproj` contiene `INFOPLIST_KEY_LSUIElement = NO` en Debug y Release.
+- [ ] Tras build, la app aparece en el Dock y no tiene icono extra en la barra de menús (sin `MenuBarExtra`; solo el menú App estándar con "AppName ▸").
+- [ ] `Cmd+,` abre la ventana de Settings con sidebar (General, Theme, Notifications, About).
 - [ ] `Cmd+Q` cierra la app.
-- [ ] Click derecho sobre la cápsula (collapsed o expanded) muestra `NSMenu` con 3 ítems.
-- [ ] "Settings…" en el menú contextual abre la ventana de Settings.
-- [ ] "Quit LiquidNotch" en el menú contextual cierra la app.
 - [ ] El botón ⚙ aparece solo cuando `notchState.isExpanded == true`, en la esquina superior derecha.
 - [ ] Click en ⚙ abre Settings.
 - [ ] El toggle "Expand on hover" en Settings persiste tras cerrar y reabrir la app.
 - [ ] Con `expandOnHover = false`, hacer hover NO expande la cápsula.
 - [ ] Con `expandOnHover = true`, hacer hover expande la cápsula (comportamiento previo).
-- [ ] El tab "About" muestra la versión correcta del bundle.
+- [ ] El ítem "About" de la sidebar muestra la versión correcta del bundle.
 - [ ] Los placeholders de "Theme" y "Notifications" muestran un texto "Coming soon" o equivalente.
 - [ ] La ventana de Settings se cierra con `Cmd+W` o con el botón rojo estándar.
+- [ ] `grep -c 'MenuBarExtra' LiquidNotch/LiquidNotchApp.swift` = 0.
+- [ ] `grep -c 'hostingView.menu\|makeContextMenu' LiquidNotch/App/AppDelegate.swift` = 0.
+- [ ] El click derecho sobre la cápsula NO muestra ningún menú contextual (comportamiento eliminado por decisión de UX).
 
 ## Decisiones tomadas
 
-- **Sí: Settings scene de SwiftUI + `Cmd+,`** — estándar de macOS, accesible, sin código boilerplate.
-- **No: NSWindow manual con `NSWindowController`** — más código, sin beneficio.
-- **Sí: `TabView` con 4 tabs** — el más común para apps con varias áreas de configuración.
-- **No: NavigationView / sidebar** — overengineering para 4 secciones.
-- **Sí: `AppSettings` como `ObservableObject` con `@AppStorage`** — SwiftUI idiomático, sin código de sincronización.
-- **Sí: Instancia duplicada de `AppSettings` en `AppDelegate`** — `AppDelegate` se inicializa antes que `@StateObject`, y `NSMenu` no puede consumir `@EnvironmentObject`. Sincronización vía `UserDefaults` (idempotente).
+- **Sí: `Window` scene con `id: "settings"` + `openWindow`** — ventana única, abrible/cerrable a demanda, sin selectores mágicos.
+- **No: `Settings` scene** — su ventana no es inspeccionable/fiable y depende de `LSUIElement = NO` + menú App; `Window` da control explícito.
+- **Sí: `NavigationSplitView` con sidebar (estilo NotchBox)** — escala con specs futuros (06, 09, y los que vengan); la referencia NotchBox usa este patrón.
+- **No: `TabView`** — menos flexible para añadir muchas secciones; el spec original lo elegía por "4 secciones", pero la app crecerá.
+- **Sí: `LSUIElement = NO` (Dock icon)** — requisito para que `Cmd+,` funcione (menú App estándar disponible). El usuario aceptó el Dock icon ("No, no tengo problema con que se muestre en el dock").
+- **No: `LSUIElement = YES` (accessory mode puro)** — impedía `Cmd+,` (sin menú App = sin atajo). Se documenta como trade-off en Riesgos.
+- **Sí: `NotificationCenter` + `Notification.Name.openSettings` como única vía de abrir Settings** — uniforme: el ⚙ de la isla, el ítem "Settings…" del menú App, y futuros entry points usan el mismo mecanismo; el root de la `Window` escucha y llama `openWindow`.
+- **No: `NSApp.sendAction(Selector(("showSettingsWindow:")), ...)`** — selector privado de SwiftUI, frágil; `openWindow(id:)` es API pública.
+- **No: `hostingView.menu` / menú contextual de click derecho** — eliminado por decisión de UX del usuario (P3: "No, deja un icono de engrane en la isla expandida… al dar click en ese icono, manda a la configuracion"). El ⚙ es el único entry point visible en la isla.
+- **Sí: `AppSettings` como `ObservableObject` con `@AppStorage`** — SwiftUI idiomático, sin código de sincronización. Solo una instancia (en `@StateObject` de la App); no se duplica en `AppDelegate`.
 - **No: Singleton / `AppSettings.shared`** — anti-pattern en SwiftUI; `@StateObject` es la forma correcta para UI.
 - **Sí: `NotchTheme` declarado en este spec con casos placeholder** — para que `AppSettings.theme` compile; el spec 06 amplía el enum.
 - **No: Diferir la creación de `NotchTheme` al spec 06** — forzaría un cambio de archivos en dos specs, complica el diff.
-- **Sí: `NSApp.sendAction(Selector(("showSettingsWindow:")), ...)`** — API privada de SwiftUI pero estable; documentada en foros de Apple Developer.
-- **No: `NSApp.sendAction(Selector(("showPreferences:")), ...)`** — usado por AppKit pre-SwiftUI; puede no funcionar con `Settings` scene.
-- **Sí: Click derecho vía `hostingView.menu`** — API moderna (macOS 14+), cero código custom.
-- **No: Subclase de `NSHostingView` con `rightMouseDown`** — funciona pero más código; `menu` property es declarativa.
-- **Sí: Frame fijo 500x320** — estándar de macOS para Settings con TabView.
-- **No: Frame dinámico según tab** — UX inconsistente entre tabs.
+- **Sí: Frame 600x440** — estándar para Settings con sidebar (NotchBox usa ~900x600; 600x440 es el mínimo cómodo para sidebar + detail).
+- **No: Frame 500x320** — pensado para `TabView`, queda pequeño con sidebar.
+- **Sí: Hover fix leyendo `UserDefaults.standard` directamente** — evita el problema de actor isolation (`AppSettings` `@MainActor` leído desde `NSResponder`); síntoma 3 del test inicial (hover no expandía).
+- **No: Acceder a `appDelegate.settings?.expandOnHover` desde `NotchHoverHandler`** — causaba que el hover no funcionara.
 
 ## Riesgos
 
 | Riesgo | Mitigación |
 |---|---|
-| `showSettingsWindow:` no funciona en alguna versión de macOS | Fallback a `showPreferences:`; documentar en el código con comentario explicativo |
-| `INFOPLIST_KEY_LSUIElement = YES` rompe la activación de Settings scene | Verificar con un test manual: `Cmd+,` debe traer la app al frente |
-| El menú contextual se dispara sobre los hijos del hosting view (no el panel) | Usar `hostingView.menu` que SwiftUI/AppKit propagan correctamente |
-| `expandOnHover = false` deja la cápsula inaccesible para expandir | El botón ⚙ (solo visible en expanded) no ayuda; documentar que "Toggle LiquidNotch" del menú contextual sigue funcionando |
-| `AppSettings` se duplica y se desincroniza | `@AppStorage` se respalda en `UserDefaults` que es global; lectura inmediata, no hay race condition |
-| Settings scene es pesada y abre en ventana propia (no en el panel) | Es el comportamiento estándar de macOS; el usuario lo espera así |
-| `Cmd+,` conflicto con otra app | Estándar de macOS, improbable; si pasa, se documenta en README |
+| Dock icon visible (contradice el "accessory mode" original) | Trade-off aceptado explícitamente por el usuario para que `Cmd+,` funcione; documentado en este spec. |
+| Menú App estándar ocupa ~24pt en la menubar | Sin icono extra (sin `MenuBarExtra`); solo "AppName ▸" mínimo. Aceptado por el usuario. |
+| `openWindow(id: "settings")` no trae la ventana al frente si ya está abierta | `Window` scene en macOS la trae al frente automáticamente (comportamiento estándar); verificar con test manual. |
+| `Notification.Name.openSettings` no llega al root si la `Window` no está montada | La `Window` scene está siempre montada (es la única scene de la app); `onReceive` siempre activo. |
+| El `expandOnHover = false` deja la cápsula inaccesible para expandir | El botón ⚙ (solo visible en expanded) no ayuda; documentar en la UI de General que "Toggle LiquidNotch" del menú App sigue funcionando (o usar `Cmd+Tab` + click en Dock). |
+| El click derecho no muestra menú (comportamiento eliminado) | Decisión de UX (P3); el ⚙ es el entry point canónico. Si se pide el menú contextual, añadirlo en un spec futuro. |
+| `CommandGroup(replacing: .appSettings)` no reemplaza el ítem si `LSUIElement = NO` cambia el menú | Verificar con test manual que "Settings…" aparece y `Cmd+,` funciona. |
+| `NavigationSplitView` con solo 4 entradas queda con sidebar ancho | `navigationSplitViewColumnWidth(min: 180, ideal: 200)` acota; el detail se adapta. |
 
 ## Verification final
 
@@ -354,12 +363,18 @@ override func mouseEntered(with event: NSEvent) {
 # Build limpio
 xcodebuild -project LiquidNotch.xcodeproj -scheme LiquidNotch -destination 'platform=macOS' clean build
 
-# Verificar que LSUIElement quedó en YES
-grep -c "INFOPLIST_KEY_LSUIElement = YES" LiquidNotch.xcodeproj/project.pbxproj  # debe imprimir 2 (Debug + Release)
-grep -c "INFOPLIST_KEY_LSUIElement = NO" LiquidNotch.xcodeproj/project.pbxproj   # debe imprimir 0
+# Verificar que LSUIElement quedó en NO
+grep -c "INFOPLIST_KEY_LSUIElement = NO" LiquidNotch.xcodeproj/project.pbxproj  # debe imprimir 2 (Debug + Release)
+grep -c "INFOPLIST_KEY_LSUIElement = YES" LiquidNotch.xcodeproj/project.pbxproj  # debe imprimir 0
 
 # Verificar que MenuBarExtra desapareció
 grep -c "MenuBarExtra" LiquidNotch/LiquidNotchApp.swift  # debe imprimir 0
+
+# Verificar que el menú contextual se eliminó
+grep -c "hostingView.menu\|makeContextMenu" LiquidNotch/App/AppDelegate.swift  # debe imprimir 0
+
+# Verificar que SettingsOpener existe
+grep -c "openSettings" LiquidNotch/Models/SettingsOpener.swift  # debe imprimir al menos 1
 
 # Verificar que las preferencias se persisten
 defaults read kelevo.LiquidNotch liquidNotch.expandOnHover  # debe imprimir 1 (true) o 0 (false)
@@ -367,7 +382,8 @@ defaults read kelevo.LiquidNotch liquidNotch.expandOnHover  # debe imprimir 1 (t
 
 ## What is **NOT** in this spec
 
-- Implementación real de los tabs de Theme y Notifications (specs 06 y 09).
+- Implementación real de las entradas de Theme y Notifications (specs 06 y 09).
+- Menú contextual de click derecho (eliminado por decisión de UX).
 - Hotkey global configurable.
 - Sincronización iCloud de Settings.
 - About page con créditos extendidos.
