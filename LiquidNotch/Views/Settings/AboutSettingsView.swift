@@ -33,6 +33,15 @@ struct AboutSettingsView: View {
             }
             .font(.callout)
 
+            Button(role: .destructive) {
+                NSApp.terminate(nil)
+            } label: {
+                Text("Quit LiquidNotch")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .padding(.top, 8)
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -22,11 +22,18 @@ struct CapsuleBarView: View {
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer(minLength: 6)
-                MiniEqualizerView(isPlaying: track?.isPlaying ?? false)
+                if !notchState.isExpanded {
+                    MiniEqualizerView(isPlaying: track?.isPlaying ?? false)
+                }
             } else {
                 Spacer()
                 CapsuleIdleIndicator()
                 Spacer()
+            }
+
+            if notchState.isExpanded {
+                Spacer()
+                    .frame(width: 36)
             }
         }
         .padding(.leading, notchState.isExpanded ? 12 : 9)

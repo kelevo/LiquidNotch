@@ -25,9 +25,10 @@ La app conserva icono en el Dock (decisión aceptada por el usuario para que `Cm
 - Persistir `selectedTheme` (placeholder para spec 06): `liquidNotch.theme`.
 - Persistir `expandOnHover` (default `true`): `liquidNotch.expandOnHover`.
 - Botón de engranaje (`gearshape.fill`) en la esquina superior derecha del estado expandido que abre Settings vía `NotificationCenter`.
-- `INFOPLIST_KEY_LSUIElement = NO` en Debug y Release del `.pbxproj` (la app muestra icono en el Dock; `setActivationPolicy(.accessory)` sigue invocándose en `AppDelegate` pero el Dock icon lo pide el usuario para que `Cmd+,` sea funcional).
+- `INFOPLIST_KEY_LSUIElement = NO` en Debug y Release del `.pbxproj` (el binario generado tiene `LSUIElement => false`; el icono en el Dock puede no refrescarse por caché de LaunchServices — ver Riesgos). **Eliminar** la llamada programática `NSApp.setActivationPolicy(.accessory)`: sobreescribía el plist en runtime y rompía Dock icon y atajos.
 - Reducir `AppDelegate` a lifecycle del panel: eliminar `var settings`, `makeContextMenu`, `showSettings`, `toggleExpansionMenu` y `hostingView.menu`.
-- Fix del hover: `NotchHoverHandler` lee `UserDefaults.standard` directamente (sin dependencia de `AppSettings` `@MainActor`).
+- Reservar 36pt de hueco en `CapsuleBarView` cuando expanded, para que el ⚙ no se solape con el `MiniEqualizerView`.
+- Botón "Quit LiquidNotch" destructivo prominente en el tab About (vía de salida principal).
 
 ### Excluido
 
@@ -250,7 +251,7 @@ Cada `XxxSettingsView` placeholder contiene solo un `Text("Coming soon")` y, en 
 Cambios:
 1. Eliminar `var settings: AppSettings?`.
 2. Eliminar `makeContextMenu()`, `showSettings()`, `toggleExpansionMenu()` y `hostingView.menu = makeContextMenu()` en `createPanel()`.
-3. Mantener: `applicationDidFinishLaunching` (con `setActivationPolicy(.accessory)`), `applicationShouldTerminateAfterLastWindowClosed`, `createPanel`, `positionPanel`, `setupTrackingArea`, `expand`, `collapse`, `scheduleCollapseIfNeeded`, `cancelCollapseIfNeeded`, `toggleExpansion`.
+3. Mantener: `applicationDidFinishLaunching` (sin `setActivationPolicy`, ver Decisiones), `applicationShouldTerminateAfterLastWindowClosed`, `createPanel`, `positionPanel`, `setupTrackingArea`, `expand`, `collapse`, `scheduleCollapseIfNeeded`, `cancelCollapseIfNeeded`, `toggleExpansion`.
 
 **Verificación**: el proyecto compila; `grep -c 'hostingView.menu\|makeContextMenu' LiquidNotch/App/AppDelegate.swift` = 0.
 
@@ -309,15 +310,19 @@ Cambios:
 ## Acceptance Criteria
 
 - [ ] `LiquidNotch.xcodeproj` contiene `INFOPLIST_KEY_LSUIElement = NO` en Debug y Release.
-- [ ] Tras build, la app aparece en el Dock y no tiene icono extra en la barra de menús (sin `MenuBarExtra`; solo el menú App estándar con "AppName ▸").
+- [ ] Tras build, la app no tiene icono extra en la barra de menús (sin `MenuBarExtra`; solo el menú App estándar con "AppName ▸"). El icono en el Dock puede no aparecer en todos los entornos de prueba (caché de LaunchServices); verificar con `plutil -p <app>/Contents/Info.plist | grep LSUIElement` que devuelve `false`.
+- [ ] `AppDelegate.applicationDidFinishLaunching` NO invoca `setActivationPolicy(.accessory)` (el plist `LSUIElement = NO` rige sin override programático).
 - [ ] `Cmd+,` abre la ventana de Settings con sidebar (General, Theme, Notifications, About).
+- [ ] `Cmd+W` cierra la ventana de Settings.
 - [ ] `Cmd+Q` cierra la app.
+- [ ] El botón "Quit LiquidNotch" en el tab About (destructivo prominente) cierra la app al hacer click.
 - [ ] El botón ⚙ aparece solo cuando `notchState.isExpanded == true`, en la esquina superior derecha.
 - [ ] Click en ⚙ abre Settings.
 - [ ] El toggle "Expand on hover" en Settings persiste tras cerrar y reabrir la app.
 - [ ] Con `expandOnHover = false`, hacer hover NO expande la cápsula.
 - [ ] Con `expandOnHover = true`, hacer hover expande la cápsula (comportamiento previo).
 - [ ] El ítem "About" de la sidebar muestra la versión correcta del bundle.
+- [ ] El botón ⚙ no se solapa con el `MiniEqualizerView` (el `CapsuleBarView` reserva 36pt de hueco cuando expanded).
 - [ ] Los placeholders de "Theme" y "Notifications" muestran un texto "Coming soon" o equivalente.
 - [ ] La ventana de Settings se cierra con `Cmd+W` o con el botón rojo estándar.
 - [ ] `grep -c 'MenuBarExtra' LiquidNotch/LiquidNotchApp.swift` = 0.
@@ -343,11 +348,22 @@ Cambios:
 - **No: Frame 500x320** — pensado para `TabView`, queda pequeño con sidebar.
 - **Sí: Hover fix leyendo `UserDefaults.standard` directamente** — evita el problema de actor isolation (`AppSettings` `@MainActor` leído desde `NSResponder`); síntoma 3 del test inicial (hover no expandía).
 - **No: Acceder a `appDelegate.settings?.expandOnHover` desde `NotchHoverHandler`** — causaba que el hover no funcionara.
+- **Sí: Eliminar `setActivationPolicy(.accessory)` de `applicationDidFinishLaunching`** — con `LSUIElement = NO` en el plist, la llamada programática forzaba accessory y anulaba el plist: la app no aparecía en Dock y los atajos (`Cmd+,`, `Cmd+W`, `Cmd+Q`) no llegaban. El plist es la única fuente de verdad.
+- **No: Mantener `setActivationPolicy(.accessory)`** — sobreescribía el `LSUIElement = NO` en runtime y rompía los atajos del menú App.
+- **Sí: Reservar 36pt con `Spacer().frame(width: 36)` en `CapsuleBarView` cuando expanded** — el botón ⚙ (overlay top-trailing del `ExpandedContentView`) se solapaba con el `MiniEqualizerView` del bar; el hueco los separa sin mover el ⚙ de su posición (esquina superior derecha, según decisión original).
+- **No: Mover el ⚙ a otra posición** — el spec lo pone en la esquina superior derecha; se ajusta el layout del bar, no el del botón.
+- **Sí: Ocultar `MiniEqualizerView` cuando la cápsula está expanded** — junto al ⚙ no se ve estético (decisión del usuario tras test manual). En collapsed sigue visible.
+- **Sí: Botón "Quit LiquidNotch" en el tab About con `Button(role: .destructive)` + `.buttonStyle(.borderedProminent)`** — vía principal de salida, dado que no hay menú contextual de click derecho (P3). Acción terminal → `role: .destructive` pinta el botón en rojo de forma nativa.
+- **No: Reintroducir el menú contextual de click derecho solo para "Quit"** — contradice la decisión P3 (UX del usuario); el spec 08 podrá evaliarlo si se pide.
+- **No: Forzar `NSApp.setActivationPolicy(.regular)` para garantizar el Dock icon** — el usuario aceptó que el Dock icon puede no aparecer en todo entorno de prueba (caché de LaunchServices / relanzado vía CLI). El plist generado confirma `LSUIElement => false` (`plutil -p … | grep LSUIElement`), así que la app está bien configurada; no se sobreescribe el plist con código.
+- **Sí (estado actual, consciente): Botón "Quit LiquidNotch" en azul** — `Button(role: .destructive)` con `.buttonStyle(.borderedProminent)` rinde en el accent color global de la app (azul) en macOS 26.5, no en rojo. Aceptado por el usuario. Pendiente: si se prefiere rojo explícito, cambiar a `.buttonStyle(.bordered)` con `role: .destructive` o añadir `.tint(.red)`.
 
 ## Riesgos
 
 | Riesgo | Mitigación |
 |---|---|
+| Dock icon ausente en algunos entornos (aunque `plutil` confirma `LSUIElement => false`) | Atribuido a caché de LaunchServices o relanzado vía CLI; no bloqueante para el usuario. Fix futuro si se necesita: `lsregister -kill -r …` o `setActivationPolicy(.regular)` (decisión consciente de no aplicarlo). |
+| Botón Quit en azul (no rojo) | `.borderedProminent` usa el accent color global; aceptado por el usuario. Pendiente de rojo explícito si cambia la preferencia. |
 | Dock icon visible (contradice el "accessory mode" original) | Trade-off aceptado explícitamente por el usuario para que `Cmd+,` funcione; documentado en este spec. |
 | Menú App estándar ocupa ~24pt en la menubar | Sin icono extra (sin `MenuBarExtra`); solo "AppName ▸" mínimo. Aceptado por el usuario. |
 | `openWindow(id: "settings")` no trae la ventana al frente si ya está abierta | `Window` scene en macOS la trae al frente automáticamente (comportamiento estándar); verificar con test manual. |
@@ -375,6 +391,9 @@ grep -c "hostingView.menu\|makeContextMenu" LiquidNotch/App/AppDelegate.swift  #
 
 # Verificar que SettingsOpener existe
 grep -c "openSettings" LiquidNotch/Models/SettingsOpener.swift  # debe imprimir al menos 1
+
+# Verificar que el override programático de activation policy desapareció
+grep -c "setActivationPolicy" LiquidNotch/App/AppDelegate.swift  # debe imprimir 0
 
 # Verificar que las preferencias se persisten
 defaults read kelevo.LiquidNotch liquidNotch.expandOnHover  # debe imprimir 1 (true) o 0 (false)

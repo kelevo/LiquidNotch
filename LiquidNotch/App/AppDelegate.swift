@@ -39,7 +39,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var centerX: CGFloat = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
         createPanel()
 
         DispatchQueue.main.async {
