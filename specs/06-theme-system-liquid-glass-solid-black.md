@@ -1,6 +1,6 @@
 # Spec: 06 — Sistema de Temas: Liquid Glass y Solid Black
 
-- **Estado**: Draft
+- **Estado**: Approved
 - **Fecha**: 2026-10-08
 - **Depende de**: Spec 05 (Settings panel)
 - **Autor**: opencode

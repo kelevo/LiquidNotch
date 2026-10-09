@@ -28,6 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hoverHandler: NotchHoverHandler?
     let notchState = NotchState()
     private let mediaManager = MediaRemoteManager()
+    private let themeManager: ThemeManager
 
     private let capsuleWidth: CGFloat = 170
     private let capsuleHeight: CGFloat = 24
@@ -37,6 +38,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var topEdgeY: CGFloat = 0
     private var centerX: CGFloat = 0
+
+    override init() {
+        self.themeManager = ThemeManager(settings: AppSettings())
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         createPanel()
@@ -80,7 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
 
-        let mainView = UnifiedNotchView(mediaManager: mediaManager, notchState: notchState)
+        let mainView = UnifiedNotchView(mediaManager: mediaManager, notchState: notchState, themeManager: themeManager)
         let hostingView = NSHostingView(rootView: mainView)
         hostingView.frame = NSRect(x: 0, y: 0, width: capsuleWidth, height: capsuleHeight)
         hostingView.autoresizingMask = [.width, .height]

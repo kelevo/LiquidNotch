@@ -3,6 +3,7 @@ import SwiftUI
 struct UnifiedNotchView: View {
     @ObservedObject var mediaManager: MediaRemoteManager
     @ObservedObject var notchState: NotchState
+    @ObservedObject var themeManager: ThemeManager
 
     @State private var glassOpacity: Double = 0
     @State private var idleGradientOpacity: Double = 0
@@ -16,13 +17,6 @@ struct UnifiedNotchView: View {
         track != nil
     }
 
-    private let aiColors: [Color] = [
-        Color(red: 0.945, green: 0.608, blue: 0.200),
-        Color(red: 0.976, green: 0.208, blue: 0.384),
-        Color(red: 0.200, green: 0.667, blue: 0.902),
-        Color(red: 0.863, green: 0.514, blue: 0.933)
-    ]
-
     private let orbitAngles: [Double] = [3 * .pi / 4, .pi / 4, 5 * .pi / 4, 7 * .pi / 4]
     private let orbitSpeeds: [Double] = [0.08, 0.09, 0.07, 0.10]
     private let orbitWobble: [Double] = [0.12, 0.15, 0.10, 0.13]
@@ -31,6 +25,8 @@ struct UnifiedNotchView: View {
     private let capsuleHeight: CGFloat = 24
     private let expandedWidth: CGFloat = 370
     private let expandedHeight: CGFloat = 180
+
+    private var theme: NotchThemeApplying { themeManager.resolved }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,42 +59,41 @@ struct UnifiedNotchView: View {
         .background(
             ZStack {
                 if notchState.isExpanded {
-                    RoundedRectangle(cornerRadius: 26)
-                        .fill(Color.black.opacity(0.15))
+                    theme.expandedBackground
 
-                    RoundedRectangle(cornerRadius: 26)
-                        .fill(Color.white.opacity(0.08))
-
-                    animatedAIGradient
-                        .blur(radius: 35)
-                        .opacity(0.40)
-                        .opacity(glassOpacity)
+                    if theme.idleGradientEnabled {
+                        animatedAIGradient
+                            .blur(radius: 35)
+                            .opacity(0.40)
+                            .opacity(glassOpacity)
+                    }
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black)
+                    theme.collapsedBackground
 
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    aiColors[0].opacity(0.6),
-                                    aiColors[1].opacity(0.5),
-                                    aiColors[2].opacity(0.4),
-                                    aiColors[3].opacity(0.5)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    if theme.idleGradientEnabled {
+                        RoundedRectangle(cornerRadius: theme.collapsedCornerRadius)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        ThemePalette.aiColors[0].opacity(0.6),
+                                        ThemePalette.aiColors[1].opacity(0.5),
+                                        ThemePalette.aiColors[2].opacity(0.4),
+                                        ThemePalette.aiColors[3].opacity(0.5)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .opacity(idleGradientOpacity)
+                            .opacity(idleGradientOpacity)
+                    }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12))
+            .clipShape(RoundedRectangle(cornerRadius: notchState.isExpanded ? theme.cornerRadius : theme.collapsedCornerRadius))
         )
         .overlay(
             Group {
                 if notchState.isExpanded || glassOpacity > 0 {
-                    RoundedRectangle(cornerRadius: notchState.isExpanded ? 26 : 12)
+                    RoundedRectangle(cornerRadius: notchState.isExpanded ? theme.cornerRadius : theme.collapsedCornerRadius)
                         .stroke(
                             LinearGradient(
                                 stops: [
@@ -114,8 +109,8 @@ struct UnifiedNotchView: View {
                         .opacity(glassOpacity)
                         .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: theme.collapsedCornerRadius)
+                        .strokeBorder(Color.white.opacity(theme.borderOpacity), lineWidth: theme.borderWidth)
                 }
             }
         )
@@ -145,6 +140,7 @@ struct UnifiedNotchView: View {
 
     private func startIdleTimer() {
         stopIdleTimer()
+        guard theme.idleGradientEnabled else { return }
         idleTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             DispatchQueue.main.async {
                 triggerIdleGradient()
@@ -161,7 +157,7 @@ struct UnifiedNotchView: View {
         guard !notchState.isExpanded && !hasAudio else { return }
 
         withAnimation(.easeIn(duration: 0.5)) {
-            idleGradientOpacity = 0.8
+            idleGradientOpacity = theme.idleGradientOpacity
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             withAnimation(.easeOut(duration: 4.0)) {
@@ -178,8 +174,8 @@ struct UnifiedNotchView: View {
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
                 let baseRadius = max(size.width, size.height) * 1.2
 
-                for index in aiColors.indices {
-                    let color = aiColors[index]
+                for index in ThemePalette.aiColors.indices {
+                    let color = ThemePalette.aiColors[index]
                     let baseAngle = orbitAngles[index]
                     let speed = orbitSpeeds[index]
                     let wobbleAmount = orbitWobble[index]
