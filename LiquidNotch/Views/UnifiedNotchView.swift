@@ -216,6 +216,8 @@ struct ExpandedContentView: View {
     let onPrevious: () -> Void
     let onSeek: (TimeInterval) -> Void
 
+    @State private var settingsHovered = false
+
     var body: some View {
         HStack(spacing: 16) {
             artworkView
@@ -224,6 +226,21 @@ struct ExpandedContentView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 16)
+        .overlay(alignment: .topTrailing) {
+            settingsButton
+                .offset(y: -28)
+        }
+    }
+
+    private var settingsButton: some View {
+        Button(action: { NotificationCenter.default.post(name: .openSettings, object: nil) }) {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(settingsHovered ? 0.95 : 0.6))
+        }
+        .buttonStyle(.plain)
+        .onHover { settingsHovered = $0 }
+        .padding(8)
     }
 
     private var artworkView: some View {

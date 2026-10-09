@@ -7,6 +7,8 @@ class NotchHoverHandler: NSResponder {
     private var hoverTimer: Timer?
 
     override func mouseEntered(with event: NSEvent) {
+        let expandOnHover = UserDefaults.standard.object(forKey: "liquidNotch.expandOnHover") as? Bool ?? true
+        guard expandOnHover else { return }
         hoverTimer?.invalidate()
         hoverTimer = nil
         onHoverEnter?()
@@ -37,7 +39,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var centerX: CGFloat = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
         createPanel()
 
         DispatchQueue.main.async {
