@@ -26,4 +26,23 @@ struct LiquidGlassTheme: NotchThemeApplying {
             }
         )
     }
+
+    var expandedBorder: AnyView {
+        AnyView(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.6), location: 0.0),
+                            .init(color: .clear, location: 0.5),
+                            .init(color: .white.opacity(0.6), location: 1.0),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+                .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
+        )
+    }
 }

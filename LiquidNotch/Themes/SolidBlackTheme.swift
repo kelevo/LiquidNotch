@@ -22,4 +22,23 @@ struct SolidBlackTheme: NotchThemeApplying {
                 .fill(ThemePalette.baseBlack)
         )
     }
+
+    var expandedBorder: AnyView {
+        AnyView(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            ThemePalette.aiColors[0],
+                            ThemePalette.aiColors[2],
+                            ThemePalette.aiColors[1],
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+                .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
+        )
+    }
 }

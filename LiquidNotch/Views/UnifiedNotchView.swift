@@ -93,21 +93,8 @@ struct UnifiedNotchView: View {
         .overlay(
             Group {
                 if notchState.isExpanded || glassOpacity > 0 {
-                    RoundedRectangle(cornerRadius: notchState.isExpanded ? theme.cornerRadius : theme.collapsedCornerRadius)
-                        .stroke(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white.opacity(0.6), location: 0.0),
-                                    .init(color: .clear, location: 0.5),
-                                    .init(color: .white.opacity(0.6), location: 1.0),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
+                    theme.expandedBorder
                         .opacity(glassOpacity)
-                        .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
                 } else {
                     RoundedRectangle(cornerRadius: theme.collapsedCornerRadius)
                         .strokeBorder(Color.white.opacity(theme.borderOpacity), lineWidth: theme.borderWidth)
