@@ -6,6 +6,8 @@ struct UnifiedNotchView: View {
     @ObservedObject var themeManager: ThemeManager
 
     @State private var glassOpacity: Double = 0
+    @State private var borderOpacity: Double = 0
+    @State private var borderFadeWorkItem: DispatchWorkItem?
     @State private var idleGradientOpacity: Double = 0
     @State private var idleTimer: Timer?
 
@@ -94,7 +96,7 @@ struct UnifiedNotchView: View {
             Group {
                 if notchState.isExpanded || glassOpacity > 0 {
                     theme.expandedBorder
-                        .opacity(glassOpacity)
+                        .opacity(borderOpacity)
                 } else {
                     RoundedRectangle(cornerRadius: theme.collapsedCornerRadius)
                         .strokeBorder(Color.white.opacity(theme.borderOpacity), lineWidth: theme.borderWidth)
@@ -105,22 +107,42 @@ struct UnifiedNotchView: View {
             if expanded {
                 withAnimation(.easeOut(duration: 0.35)) {
                     glassOpacity = 1.0
+                    borderOpacity = 1.0
                 }
                 stopIdleTimer()
+
+                borderFadeWorkItem?.cancel()
+                if let delay = theme.borderAutoFadeDelay {
+                    let work = DispatchWorkItem {
+                        withAnimation(.easeInOut(duration: 0.8)) {
+                            borderOpacity = 0.0
+                        }
+                    }
+                    borderFadeWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+                }
             } else {
+                borderFadeWorkItem?.cancel()
+                borderFadeWorkItem = nil
                 withAnimation(.easeOut(duration: 4.0)) {
                     glassOpacity = 0.0
+                }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    borderOpacity = 0.0
                 }
                 startIdleTimer()
             }
         }
         .onAppear {
             glassOpacity = notchState.isExpanded ? 1.0 : 0.0
+            borderOpacity = notchState.isExpanded ? 1.0 : 0.0
             if !notchState.isExpanded {
                 startIdleTimer()
             }
         }
         .onDisappear {
+            borderFadeWorkItem?.cancel()
+            borderFadeWorkItem = nil
             stopIdleTimer()
         }
     }

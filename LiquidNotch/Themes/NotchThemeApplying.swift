@@ -14,4 +14,5 @@ protocol NotchThemeApplying {
     var borderWidth: CGFloat { get }
     var borderOpacity: Double { get }
     var transitionDuration: Double { get }
+    var borderAutoFadeDelay: TimeInterval? { get }
 }

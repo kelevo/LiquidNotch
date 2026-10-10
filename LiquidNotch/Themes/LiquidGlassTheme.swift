@@ -11,6 +11,7 @@ struct LiquidGlassTheme: NotchThemeApplying {
     let borderWidth: CGFloat = 0.5
     let borderOpacity: Double = 0.12
     let transitionDuration: Double = 0.4
+    let borderAutoFadeDelay: TimeInterval? = nil
 
     var collapsedBackground: AnyView {
         AnyView(Capsule().fill(ThemePalette.baseBlack))

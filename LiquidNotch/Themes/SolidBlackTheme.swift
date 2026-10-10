@@ -11,6 +11,7 @@ struct SolidBlackTheme: NotchThemeApplying {
     let borderWidth: CGFloat = 0.0
     let borderOpacity: Double = 0.0
     let transitionDuration: Double = 0.4
+    let borderAutoFadeDelay: TimeInterval? = 1.0
 
     var collapsedBackground: AnyView {
         AnyView(Capsule().fill(ThemePalette.baseBlack))
